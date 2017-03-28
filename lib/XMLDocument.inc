@@ -363,8 +363,11 @@ void appendChildNode_ (DxlObject dxlParent, XMLTag xtChild) {
     
     OleAutoObj oleParent = getOleHandle_ xd
     OleAutoObj oleChild  = getOleHandle_ xtChild
-    
-    checkOLE ( oleMethod(oleParent, "appendChild", oleArgs <- oleChild , oleDomElement) )
+    OleAutoObj oleDomElement
+
+    checkOleSuccess ( oleMethod(oleParent, "appendChild", oleArgs <- oleChild , oleDomElement) )
+
+    oleCloseAutoObject oleDomElement
 }
 
 /*! \memberof XMLDocument 
@@ -518,7 +521,7 @@ void setAttribute (XMLTag xt, string sAttrName, string sAttrValue) {
 */  
 string getAttribute (XMLTag xt, string sAttrName) {
     string result = ""
-    sOleResult =  oleMethod ( getOleHandle_ xt, "getAttribute", oleArgs <- sAttrName, result )
+    string sOleResult =  oleMethod ( getOleHandle_ xt, "getAttribute", oleArgs <- sAttrName, result )
      
     if (!null sOleResult) result = null
     return result
