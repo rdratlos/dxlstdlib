@@ -833,31 +833,60 @@ int   addXMLschema_ (XMLSchemaCache xc, string xmlns, XMLDocument xd) {
 
 XMLTag create_XMLTag_ (XMLDocument xd, OleAutoObj x) {
     DxlObject dxlObj = new(); XMLTag result = (addr_ dxlObj) XMLTag
-    setOleHandle_ (result, x) 
-    setParentDocument_ (result, xd) 
+    setOleHandle_ (result, x)
+    setParentDocument_ (result, xd)
     cacheXMLTag_ (xd, result)
     return result
 }
 
-/*! \memberof XMLDocument 
-    \return A newly XMLTag object, that is associated to the XMLDocument xd. 
+/*! \memberof XMLDocument
+    \return A newly XMLTag object, that is associated to the XMLDocument xd.
     \param xd The XMLDocument to associate with the newly created XMLTag
     \param tagName The name of the tag to create.
     \brief Creates a new XMLTag but does NOT put it to the hierarchy (See appendChild(XMLDocument, XMLTag))
-    
+
     You need to call \b appendChild or \b insertChildBefore to make the new XMLTag show up in the document.
-*/  
-XMLTag create_XMLTag (XMLDocument xd, string tagName) {    
+*/
+XMLTag create_XMLTag (XMLDocument xd, string tagName) {
     if (null xd) { raiseError ("NULL Parameter", "XML Document"); return null XMLTag}
-    
+
     OleAutoObj objDoc = getOleHandle_ xd
     if (null objDoc) { raiseError ("NULL Parameter", "XML Document"); return null XMLTag }
-    
+
     OleAutoObj oleNewTag = null
-    checkOLE ( oleMethod (objDoc, "createElement", oleArgs <- tagName, oleNewTag) )    
-    if (null oleNewTag) { raiseError ("XML Error", "Could not create new element " tagName " in XML document."); }    
-    
-    return create_XMLTag_ (xd, oleNewTag) 
+    checkOleSuccess ( oleMethod (objDoc, "createElement", oleArgs <- tagName, oleNewTag) )
+    if (null oleNewTag) { raiseError ("XML Error", "Could not create new element " tagName " in XML document."); }
+
+    return create_XMLTag_ (xd, oleNewTag)
+}
+
+
+/*! \memberof XMLDocument
+    \return A newly XMLTag object, that is associated to the XMLDocument xd.
+    \param xd The XMLDocument to associate with the newly created XMLTag
+    \param tagName The name of the tag to create.
+    \param namespaceURI The namespace URI to specify the context in which to create the new XML element
+    \brief Creates a new XMLTag in the passed namespace but does NOT put it to the hierarchy
+           (See appendChild(XMLDocument, XMLTag))
+
+    You need to call \b appendChild or \b insertChildBefore to make the new XMLTag show up in the document.
+*/
+XMLTag create_XMLTag (XMLDocument xd, string tagName, string namespaceURI) {
+    const int NODE_ELEMENT = 1
+    if (null xd) { raiseError ("NULL Parameter", "XML Document"); return null XMLTag}
+
+    OleAutoObj objDoc = getOleHandle_ xd
+    if (null objDoc) { raiseError ("NULL Parameter", "XML Document"); return null XMLTag }
+
+    if (null namespaceURI) {
+        return create_XMLTag (xd, tagName)
+    }
+
+    OleAutoObj oleNewTag = null
+    checkOleSuccess ( oleMethod (objDoc, "createNode", oleArgs <- NODE_ELEMENT <- tagName <- namespaceURI, oleNewTag) )
+    if (null oleNewTag) { raiseError ("XML Error", "Could not create new element " tagName " in XML document."); }
+
+    return create_XMLTag_ (xd, oleNewTag)
 }
 
 
@@ -1081,33 +1110,84 @@ XMLTag insertTagBefore (XMLTag xtPrevious, string tagName) {
     return xt
 }
 
-/*! \memberof XMLTag 
-    \param xtParent an XMLTag 
+/*! \memberof XMLTag
+    \overload
+    \param xtPrevious the XMLTag before which the new tag will be created.
+    \param tagName a name for the XML tag to be created.
+    \param namespaceURI The namespace URI to specify the context in which to create the new XML element
+    \returns A new XMLTag with the name tagName that has been inserted before the tag xtPrevious
+    \brief This function will create a new tag with the name tagName and insert it before xtPrevious.
+
+    This function combines the functions XMLDocument::create_XMLTag(XMLDocument,string) and insertChildBefore(XMLTag,XMLTag). A new tag will be created.
+    and inserted before xtPrevious.
+*/
+XMLTag insertTagBefore (XMLTag xtPrevious, string tagName, string namespaceURI) {
+    XMLTag xt = create_XMLTag (getParentDocument xtPrevious, tagName, namespaceURI)
+    insertChildBefore (xtPrevious, xt)
+    return xt
+}
+
+/*! \memberof XMLTag
+    \param xtParent an XMLTag
     \param tagName a name for the XML tag to be created.
     \returns A new XMLTag with the name tagName that has been inserted as the last child of xtParent
     \brief This function will create a new tag with the name tagName and insert it before xtPrevious.
 
     This function combines the functions XMLDocument::create_XMLTag(XMLDocument,string) and appendChild(XMLTag,XMLTag). A new tag will be created
-    and inserted before xtPrevious. 
-*/  
+    and inserted before xtPrevious.
+*/
 XMLTag appendTag (XMLTag xtParent, string tagName) {
-    XMLTag xt = create_XMLTag (getParentDocument xtParent, tagName) 
-    appendChild (xtParent, xt) 
+    XMLTag xt = create_XMLTag (getParentDocument xtParent, tagName)
+    appendChild (xtParent, xt)
     return xt
 }
 
-/*! \memberof XMLTag 
+/*! \memberof XMLTag
+    \overload
+    \param xtParent an XMLTag
+    \param tagName a name for the XML tag to be created.
+    \param namespaceURI The namespace URI to specify the context in which to create the new XML element
+    \returns A new XMLTag with the name tagName that has been inserted as the last child of xtParent
+    \brief This function will create a new tag with the name tagName and insert it before xtPrevious.
+
+    This function combines the functions XMLDocument::create_XMLTag(XMLDocument,string) and appendChild(XMLTag,XMLTag). A new tag will be created
+    and inserted before xtPrevious.
+*/
+XMLTag appendTag (XMLTag xtParent, string tagName, string namespaceURI) {
+    XMLTag xt = create_XMLTag (getParentDocument xtParent, tagName, namespaceURI)
+    appendChild (xtParent, xt)
+    return xt
+}
+
+/*! \memberof XMLTag
     \param xtParent an XMLDocument
     \param tagName a name for the XML tag to be created.
     \returns A new XMLTag with the name tagName that has been inserted as the last child of the root node
     \brief This function will create a new tag with the name tagName and insert it before xtPrevious.
 
     This function combines the functions XMLDocument::create_XMLTag(XMLDocument,string) and appendChild(XMLTag,XMLTag). A new tag will be created
-    and inserted before xtPrevious. 
-*/  
+    and inserted before xtPrevious.
+*/
 XMLTag appendTag (XMLDocument xtParent, string tagName) {
-    XMLTag xt = create_XMLTag (xtParent, tagName) 
-    appendChild (xtParent, xt) 
+    XMLTag xt = create_XMLTag (xtParent, tagName)
+    appendChild (xtParent, xt)
+    return xt
+}
+
+/*! \memberof XMLTag
+    \overload
+    \param xtParent an XMLDocument
+    \param tagName a name for the XML tag to be created.
+    \param namespaceURI The namespace URI to specify the context in which to create the new XML element
+    \returns A new XMLTag with the name tagName that has been inserted as the last child of the root node
+    \brief This function will create a new tag with the name tagName and insert it before xtPrevious.
+
+    This function combines the functions XMLDocument::create_XMLTag(XMLDocument,string) and appendChild(XMLTag,XMLTag). A new tag will be created
+    and inserted before xtPrevious.
+*/
+XMLTag appendTag (XMLDocument xtParent, string tagName, string namespaceURI) {
+    XMLTag xt = create_XMLTag (xtParent, tagName, namespaceURI)
+    appendChild (xtParent, xt)
     return xt
 }
 
