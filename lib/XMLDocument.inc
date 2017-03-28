@@ -722,6 +722,85 @@ XMLSchemaCache create_XMLSchemaCache_ () {
     return result
 }
 
+XMLDocument create_XMLTransformStyleSheet_ (string pNameSpace) {
+    Buffer XSLT_STYLE_SHEET = create
+    XSLT_STYLE_SHEET += "<xsl:stylesheet\n"
+    XSLT_STYLE_SHEET += "  xmlns:xsl=\"http://www.w3.org/1999/XSL/Transform\"\n"
+
+    if (!null pNameSpace) {
+        XSLT_STYLE_SHEET += "  xmlns:t=\""
+        XSLT_STYLE_SHEET += pNameSpace
+        XSLT_STYLE_SHEET += "\"\n"
+    }
+
+    XSLT_STYLE_SHEET += "  version=\"1.0\">\n\n"
+    XSLT_STYLE_SHEET += "<xsl:output method=\"xml\" indent=\"yes\" encoding=\"UTF-8\"/>\n\n"
+    XSLT_STYLE_SHEET += "<xsl:strip-space elements=\"*\"/>\n"
+    XSLT_STYLE_SHEET += "<xsl:template match=\"@* | node()\">\n"
+    XSLT_STYLE_SHEET += "  <xsl:copy>\n"
+    XSLT_STYLE_SHEET += "    <xsl:apply-templates select=\"@* | node()\"/>\n"
+    XSLT_STYLE_SHEET += "  </xsl:copy>\n"
+    XSLT_STYLE_SHEET += "</xsl:template>\n\n"
+    XSLT_STYLE_SHEET += "</xsl:stylesheet>"
+
+    /*  XSLT style sheet to remove all namespace references
+    const string XSLT_STYLE_SHEET =
+    "<xsl:stylesheet"                                                 "\n"  //
+    "  xmlns:xsl=\"http://www.w3.org/1999/XSL/Transform\""            "\n"  //
+    "  version=\"1.0\">"                                              "\n\n"//
+    "<xsl:output method=\"xml\" indent=\"yes\" encoding=\"UTF-8\"/>"  "\n\n"//
+    "<!-- Stylesheet to remove all namespaces from a document  -->"   "\n"//
+    "<!-- NOTE: this will lead to attribute name clash, if an  -->"   "\n"//
+    "<!-- element contains two attributes with same local name -->"   "\n"//
+    "<!-- but different namespace prefix -->"                         "\n"//
+    "<!-- Nodes that cannot have a namespace are copied as such -->"  "\n\n"//
+    "<xsl:strip-space elements=\"*\"/>"                               "\n\n"//
+    "<!-- Template to copy elements -->"                              "\n"//
+    "<xsl:template match=\"*\">"                                      "\n"  //
+    "  <xsl:element name=\"{local-name()}\">"                         "\n"  //
+    "    <xsl:apply-templates select=\"@* | node()\"/>"               "\n"  //
+    "  </xsl:element>"                                                "\n"  //
+    "</xsl:template>"                                                 "\n\n"//
+    "<!-- Template to copy attribute -->"                             "\n"//
+    "<xsl:template match=\"@*\">"                                     "\n"  //
+    "  <xsl:attribute name=\"{local-name()}\">"                       "\n"  //
+    "    <xsl:value-of select=\".\"/>"                                "\n"  //
+    "  </xsl:attribute>"                                              "\n"  //
+    "</xsl:template>"                                                 "\n\n"//
+    "<!-- Template to copy rest of the nodes -->"                     "\n"//
+    "<xsl:template match=\"comment() | text() | processing-instruction()\">" "\n"  //
+    "  <xsl:copy/>"                                                    "\n"  //
+    "</xsl:template>"                                                 "\n\n"//
+    "</xsl:stylesheet>"
+    */
+
+    OleAutoObj oleDoc = oleCreateAutoObject("Msxml2.DOMDocument.6.0")
+
+    if (null oleDoc) {
+        raiseError ("COM Error", "Microsoft XML DOMDocument seems not to be installed. Install Internet Explorer.")
+        delete XSLT_STYLE_SHEET
+        return null XMLDocument
+    }
+
+    // Remove unnecessary checks to speed up object creation and avoid errors
+    checkOleSuccess ( olePut (oleDoc, "async", false) )
+    checkOleSuccess ( olePut (oleDoc, "validateOnParse", false) )
+    checkOleSuccess ( olePut (oleDoc, "resolveExternals", false) )
+
+    DxlObject x = new();
+    XMLDocument result = (addr_ x) XMLDocument
+
+    setOleHandle_ (result, oleDoc)
+    Skip sk = create(); setTagCache_ (result, sk)
+
+    if (!loadXML (result, tempStringOf(XSLT_STYLE_SHEET))) {
+        delete_XMLDocument(result)
+    }
+
+    delete XSLT_STYLE_SHEET
+    return result
+}
+
 /*! \memberof XMLSchemaCache
     \internal
     \return Error code in case of failure; otherwise false
@@ -1363,3 +1442,89 @@ int validateXMLDocument (XMLDocument xd) {
     return validateXMLDocument (xd, pLocation)
 }
 
+/*! \memberof XMLDocument
+    \return error code; 0 if the XML document could be saved
+    \param xd The XMLDocument, whose content shall be stored in a file.
+    \param pNameSpace The namespace of the XML schema to be applied for the
+                      XML document
+    \param pFileName the file name of the XML document to save
+    \brief This function saves the XML content of an XMLDocument object into a file
+*/
+int saveXMLfile (XMLDocument &xd, string pNameSpace, string pFileName) {
+    //Regexp IS_NS_ATTRIBUTE = regexp2 "xmlns"
+    XMLDocument xdTransformed = xd
+    XMLDocument xdTemp = xd
+    int transformResult = 0;
+    int saveResult = 0;
+    string nsAttrName
+    string nsAttrValue
+
+    // Transform the XML document into beautified XML format
+    // (e. g. correct indentation of XML tags, ...)
+    XMLDocument xdStylesheet = create_XMLTransformStyleSheet_(pNameSpace)
+    if (!null xdStylesheet)
+    {
+        transformResult = transformDocument(xdStylesheet, xdTransformed)
+        delete_XMLDocument(xdStylesheet)
+
+        xd = xdTransformed
+    }
+
+    // Save the XML document to file
+    saveResult = save_XMLDocument_ (xdTransformed, pFileName)
+
+    if (saveResult < 0)
+    {
+        return saveResult
+    }
+    return transformResult
+}
+
+/*! \memberof XMLDocument
+    \overload
+    \return error code; 0 if the XML document could be saved
+    \param xd The XMLDocument, whose content shall be stored in a file.
+    \param pFileName the file name of the XML document to save
+    \brief This function saves the XML content of an XMLDocument object into a file
+*/
+int saveXMLfile (XMLDocument &xd, string pFileName) {
+    XMLDocument xdTemp = xd
+    string pNameSpace = ""
+    int iRetVal = saveXMLfile (xdTemp, pNameSpace, pFileName)
+    xd = xdTemp
+    return iRetVal
+}
+
+/*! \memberof XMLDocument
+    \overload
+    \return true - if the XML document could be saved. 'false' if there was an error saving the document.
+    \param xd The XMLDocument, whose content shall be stored in a file.
+    \param pFileName the file name of the XML document to save
+    \brief This function saves the XML content of an XMLDocument object into a file
+*/
+bool saveXMLfile (XMLDocument &xd, string pFileName) {
+    XMLDocument xdTemp = xd
+    bool bRetVal = true
+    int iRetVal = saveXMLfile (xdTemp, pFileName)
+    if (iRetVal == XMLSAVERR) {
+        bRetVal = false
+    }
+    else if (iRetVal == XMLSAVERR) {
+        raiseError ("XMLSAVERR", "Validation of XML document failed.")
+    }
+    xd = xdTemp
+    return bRetVal
+}
+
+/*! \memberof XMLDocument
+    \return error code; 0 if the XML document could be saved
+    \param xd The XMLDocument, whose content shall be stored in a file.
+    \param pFileName the file name of the XML document to save
+    \details This function stores the raw content of the XML document.
+             In order to also transform the XML document into beautified XML format
+             (e. g. correct indentation of XML tags, ...) use function saveXMLfile().
+    \brief Save the XML content of an XMLDocument object into a file
+*/
+int saveNoFormatXMLfile (XMLDocument xd, string pFileName) {
+    return save_XMLDocument_ (xd, pFileName)
+}
