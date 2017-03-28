@@ -50,6 +50,18 @@ This example will produce the following XML:
 \class XMLNodelist
 */
 
+//////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Constants: Error Handling
+//////////////////////////////////////////////////////////////////////////////////////////////////////////
+const int XMLNOERR     =  0;
+const int XMLLOADERR   = -1;
+const int XMLPARSERR   = -2;
+const int XMLVALERR    = -3;
+const int XMLXFORMERR  = -4;
+const int XMLSAVERR    = -5;
+const int XMLNOFILEERR = -6;
+const int XMLINVALERR =  -7;
+
 bool xmlNoValue ( string s ) { 
     if (s[0:7] == "Method '") return true
     return false
