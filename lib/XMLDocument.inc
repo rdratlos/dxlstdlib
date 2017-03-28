@@ -60,7 +60,145 @@ const int XMLVALERR    = -3;
 const int XMLXFORMERR  = -4;
 const int XMLSAVERR    = -5;
 const int XMLNOFILEERR = -6;
-const int XMLINVALERR =  -7;
+const int XMLINVALERR  = -7;
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Helper Functions: XML file management
+//////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+//=================================================================
+// Function:    fileSize()
+// Usage:   Tests if a file exists and returns file size
+//
+// Input:   Filename
+//
+// Output:  File size in [byte]
+//          -1: File not found
+//=================================================================
+int fileSize(string filename)
+{
+    int fileSize = -1
+    Stat s
+    s = create(filename)
+    if (!null s) {
+        fileSize = size(s)
+        delete s
+    }
+    return fileSize
+}
+
+//=================================================================
+// Function:    checkURL()
+// Usage:   Tests if a passed URL is valid and points to an XML
+//          file, that can be downloaded.
+//
+// Input:   URL
+//
+// Output:  True if the URL points to an XML file with read access;
+//          otherwise False
+//=================================================================
+bool checkURL(string pURL)
+{
+    bool retVal = false
+
+    OleAutoObj oleHttpRequest = oleCreateAutoObject("Msxml2.XMLHTTP.6.0")
+    OleAutoObj oleDoc = null
+    OleAutoObj oleDocRoot = null
+    int iHttpStatus = 0
+
+    if (!null oleHttpRequest) {
+        oleMethod (oleHttpRequest, "open", oleArgs <- "GET" <- pURL <- false)
+        oleMethod (oleHttpRequest, "send")
+        oleGet (oleHttpRequest, "status", iHttpStatus)
+        if (iHttpStatus == 200) {
+            oleGet (oleHttpRequest, "responseXML", oleDoc)
+            if (!null oleDoc) {
+                oleGet (oleDoc, "documentElement", oleDocRoot)
+                if (!null oleDocRoot) {
+                    retVal = true
+                    oleCloseAutoObject oleDocRoot
+                }
+                else {
+                    // print "Empty or no XML document\n"
+                }
+                oleCloseAutoObject oleDoc
+            }
+        }
+        else {
+            // print "HTML error: " iHttpStatus "\n"
+        }
+        oleCloseAutoObject oleHttpRequest
+    }
+
+    return retVal
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Helper Functions: XML general
+//////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+//=================================================================
+// Function:    create_XMLElementName()
+// Usage:   Transforms a passed string into a valid XML element name
+//
+// Input:   Porposed XML element name
+//
+// Output:  Validated XML element name
+//
+//=================================================================
+Buffer create_XMLElementName(Buffer &p_original)
+{
+    Regexp GET_INVALID_XML_CHAR = regexp2 "([^A-Za-z0-9_\\.]+)"
+    Regexp HAS_INVALID_XML_START = regexp2 "^([xX][mM][lL]|[^A-Za-z_])"
+    string pReplaceWith = "_"
+    Buffer bTmp = p_original
+    Buffer ret_buf
+
+    if (!null bTmp )
+    {
+        string_replace(GET_INVALID_XML_CHAR, pReplaceWith, p_original)
+    }
+    if (null bTmp ||
+        length(bTmp) == 0 ||
+        HAS_INVALID_XML_START p_original)
+    {
+        ret_buf = create
+        ret_buf += "_"
+        if (!null bTmp)
+        {
+            combine(ret_buf, p_original, 0)
+        }
+        delete p_original
+        p_original = ret_buf
+    }
+
+    ret_buf = p_original
+
+    delete GET_INVALID_XML_CHAR
+    delete HAS_INVALID_XML_START
+
+    return ret_buf
+}
+
+//=================================================================
+// Function:    create_XMLElementName()
+// Usage:   Transforms a passed string into a valid XML element name
+//
+// Input:   Porposed XML element name
+//
+// Output:  Validated XML element name
+//
+//=================================================================
+string create_XMLElementName(string p_original)
+{
+    string XMLElementName
+    Buffer bTmp = create
+    bTmp += p_original
+    bTmp = create_XMLElementName(bTmp)
+    XMLElementName = stringOf bTmp
+    delete bTmp
+    return XMLElementName
+}
 
 bool xmlNoValue ( string s ) { 
     if (s[0:7] == "Method '") return true
@@ -70,6 +208,10 @@ bool xmlNoValue ( string s ) {
 void xmlCheckOLE( string s) {    
     if (!null s && !xmlNoValue s) raiseError ("XML OLE Error in " (getCaller 3) "\ncalled from: " (getCaller 4) "\n", s)    
 }
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////
+// XML DOM API
+//////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 //! \brief XMLDocument is a class that encapsules an XML document.
 struct XMLDocument {};
