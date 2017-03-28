@@ -23,6 +23,7 @@ This library provides a wrapper for the MSXML DOM Document COM interface. For th
 - XMLDocument   => Class for an XML document. The class provides functions for manipulating XML tags or xslt transformations.
 - XMLTag        => Class for the content of one xml tag. Provides functions for reading the content, reading the tag hierarchy.
 - XMLNodelist   => Class for a list of nodes that is returned by the \em selectNodes function or the \em childNodes function.
+- XMLSchemaCache => Class for the schema cache property of an XML document
 
 \class XMLDocument
 
@@ -48,6 +49,7 @@ This example will produce the following XML:
 
 \class XMLTag
 \class XMLNodelist
+\class XMLSchemaCache
 */
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -229,6 +231,31 @@ DxlObject DxlObjectOf (XMLTag xd) { return (addr_ xd) DxlObject }
 OleAutoObj getOleHandle_ (XMLTag xd)                    { DxlObject x = DxlObjectOf xd; return (x->"oleHandle") OleAutoObj }
 void       setOleHandle_ (XMLTag xd, OleAutoObj oleObj) { DxlObject x = DxlObjectOf xd;         x->"oleHandle" = oleObj    }
 
+//! \brief XMLSchemaCache is a class that encapsules an XML schema cache.
+struct XMLSchemaCache {};
+DxlObject DxlObjectOf (XMLSchemaCache xs) { return (addr_ xs) DxlObject }
+XMLSchemaCache XMLSchemaCacheOf (DxlObject dx) { return (addr_ dx) XMLSchemaCache }
+
+// OLE Handle Properties
+OleAutoObj getOleHandle_ (XMLSchemaCache xs)                    { DxlObject x = DxlObjectOf xs; return (x->"oleHandle") OleAutoObj }
+void       setOleHandle_ (XMLSchemaCache xs, OleAutoObj oleObj) { DxlObject x = DxlObjectOf xs;         x->"oleHandle" = oleObj    }
+
+XMLSchemaCache getSchemaCache_ (XMLDocument xd)                     { DxlObject x = DxlObjectOf xd; return (x->"schemaCache") XMLSchemaCache }
+void           setSchemaCache_ (XMLDocument xd, XMLSchemaCache xs ) { DxlObject x = DxlObjectOf xd;         x->"schemaCache" = xs            }
+
+/*! \memberof XMLSchemaCache
+    \param xsc XMLSchemaCache object to be destroyed. Will be set to NULL by the function.
+    \brief This function will destroy the XML schema cache
+
+    This function must be called for every XML schema cache that was created using create_XMLSchemaCache_()
+*/
+void delete_XMLSchemaCache_ (XMLSchemaCache &xsc) {
+
+    OleAutoObj oleObj = getOleHandle_ xsc; oleCloseAutoObject oleObj
+    DxlObject x = DxlObjectOf xsc; delete x;
+    xsc = null;
+}
+
 /*! \memberof XMLTag
     \brief returns the XMLDocument that contains the XMLTag xt
     \param xt The XMLTag whose parent to return
@@ -315,13 +342,76 @@ void cleanupTags_ (XMLDocument xd) {
     
     This function must be called for every XMLDocument that was created using create_XMLDocument()
 */  
-void delete_XMLDocument (XMLDocument &xd) {    
-    cleanupTags_ xd
-    Skip sk = getTagCache_ xd; delete sk
-    
-    OleAutoObj oleObj = getOleHandle_ xd; oleCloseAutoObject oleObj    
-    DxlObject x = DxlObjectOf xd; delete x; 
-    xd = null;
+void delete_XMLDocument (XMLDocument &xd) {
+    XMLDocument xdTemp = xd
+    if (!null xdTemp)
+    {
+        cleanupTags_ xdTemp
+        Skip sk = getTagCache_ xdTemp; delete sk
+
+        XMLSchemaCache xsc = getSchemaCache_ xdTemp
+        if (!null xsc)
+        {
+            delete_XMLSchemaCache_ xsc
+        }
+
+        OleAutoObj oleObj = getOleHandle_ xdTemp; oleCloseAutoObject oleObj
+        DxlObject x = DxlObjectOf xdTemp; delete x;
+        xd = xdTemp = null;
+    }
+}
+
+
+/*! \memberof XMLSchemaCache
+    \return (Empty) XML schema cache; returns null if XMLSchemaCache object could not be created
+    \brief Constructor for XMLSchemaCache class
+    This function returns a new and empty XML Schema Cache.
+*/
+XMLSchemaCache create_XMLSchemaCache_ () {
+    OleAutoObj oleCache = oleCreateAutoObject("Msxml2.XMLSchemaCache.6.0")
+
+    if (null oleCache) {
+        raiseError ("COM Error", "Microsoft XML DOMDocument seems not to be installed. Install Internet Explorer.")
+        return null XMLSchemaCache
+    }
+
+    checkOleSuccess ( olePut (oleCache, "validateOnLoad", true) )
+
+    DxlObject x = new();
+    XMLSchemaCache result = (addr_ x) XMLSchemaCache
+
+    setOleHandle_ (result, oleCache)
+
+    return result
+}
+
+/*! \memberof XMLSchemaCache
+    \internal
+    \return Error code in case of failure; otherwise false
+    \param xmlns The namespace to associate with the passed XML schema.
+    \param xd XML document object, that contains the XML schema
+    \brief This function will add the XML schema to the schema cache.
+    \details If a null XML document is passed, any schema for the passed
+             namespace is removed from the schema cache.
+*/
+int   addXMLschema_ (XMLSchemaCache xc, string xmlns, XMLDocument xd) {
+
+    if (null xd) {
+        raiseError ("NULL Parameter", "XML Schema Document");
+        return XMLINVALERR
+    }
+
+    OleAutoObj objCache = getOleHandle_ xc
+    if (null objCache) {
+        raiseError ("NULL Parameter", "XML Schema Cache");
+        return XMLINVALERR
+    }
+
+    if (!checkOleSuccess ( oleMethod (objCache, "add", oleArgs <- xmlns <- (getOleHandle_ xd) ) )) {
+        return XMLVALERR
+    }
+
+    return XMLNOERR
 }
 
 
@@ -352,6 +442,61 @@ XMLTag create_XMLTag (XMLDocument xd, string tagName) {
     if (null oleNewTag) { raiseError ("XML Error", "Could not create new element " tagName " in XML document."); }    
     
     return create_XMLTag_ (xd, oleNewTag) 
+}
+
+
+/*! \memberof XMLDocument
+    \return error code; 0 - if the XML schema could be loaded and attached correctly.
+    \param xmlns The namespace to associate with the XML schema.
+    \param[in,out] pFileName File name of the XML schema file to load. Returns a
+                             valid URI to the XML schema, if the schema has been
+                             successfully attached.
+    \note The returned URI must be used as schema location in new XML documents.
+          If schema location in the XML file differs from the URI, that MSXML
+          has stored in the schema cache, validation of the XML document will fail
+          with error: The node is neither valid nor invalid because no DTD/Schema
+          declaration was found.
+    \brief This function will attach an XML schema to the XML document.
+*/
+int attachXMLschema (XMLDocument xd, string xmlns, string &pFileName) {
+    XMLSchemaCache xsc = getSchemaCache_ xd
+    XMLDocument xs = null
+    string pUri = ""
+    string tmpFileName = pFileName
+    int iRetVal = 0
+
+    if (null tmpFileName)
+    {   // In MSXML 6.0 a null filename requests the removal of any schema for the
+        // passed namespaces. This feature is not supported via OLE interface.
+        raiseError( "NULL Parameter", "XML Schema file"  )
+        iRetVal = XMLNOFILEERR
+        return iRetVal
+    }
+
+    xs = create_XMLDocument
+    iRetVal = loadXMLfile(xs, pFileName)
+    if (iRetVal == 0)
+    {
+        if (null xsc)
+        {
+            xsc = create_XMLSchemaCache_
+            setSchemaCache_ (xd, xsc)
+            checkOleSuccess ( olePut ( getOleHandle_ xd, "schemas", getOleHandle_ xsc ) )
+        }
+        iRetVal = addXMLschema_(xsc, xmlns, xs)
+    }
+
+    if (iRetVal == 0)
+    {
+        checkOleSuccess (  oleGet (getOleHandle_ xs, "url", pUri)   )
+        if (!null pUri) {
+            pFileName = pUri
+        }
+    }
+
+    delete_XMLDocument xs
+
+    return iRetVal
 }
 
 
