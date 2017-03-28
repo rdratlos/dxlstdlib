@@ -12,6 +12,21 @@ OleAutoArgs oleArgs () {
     return oleHelpers_inc_args;
 }
 
+bool noValueRet ( string s ) {
+    if (s[0:7] == "Method '") return true
+    return false
+}
+
+// Check result of an OLE Automation operation (e. g. OleMethod, OleGet, OlePut)
+bool checkOleSuccess( string oleReturnString) {
+    bool res = true    // SUCCESS
+    if (!null oleReturnString && !noValueRet oleReturnString) {
+        raiseError ("XML OLE Error in " (getCaller 3) "\ncalled from: " (getCaller 4) "\n", oleReturnString)
+        res = false    // FAILED
+    }
+    return res
+}
+
 void checkOLE (string s) { if (!null s) raiseError ("OLE Error in " (getCaller 3) "\ncalled from: " (getCaller 4) "\n", s) }
 
 // enable fast creation of oleArgument lists
