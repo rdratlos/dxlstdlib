@@ -862,6 +862,90 @@ XMLTag create_XMLTag (XMLDocument xd, string tagName) {
 
 
 /*! \memberof XMLDocument
+    \overload
+    \return A new XMLTag object, that contains the processing instruction node.
+    \param xd The XMLDocument to associate with the XML processing instruction object
+    \param targetName The processing instruction target
+    \param contentValue (optional) The content of the processing instruction
+    \brief Creates a special XML processing instruction (PI) node and fills
+    \note This function creates only the XML node for the PI. The node name is set to the passed target name
+          for the instruction. The node value is set to be the passed content of the instruction.
+    \see Use appendChild() or insertChildBefore() to insert the returned processing instruction XMLTag
+         into the XML document.
+*/
+XMLTag create_XMLProcessingInstruction(XMLDocument xd, string targetName, string contentValue) {
+    if (null xd) { raiseError ("NULL Parameter", "XML Document"); return null XMLTag}
+
+    OleAutoObj objDoc = getOleHandle_ xd
+    if (null objDoc) { raiseError ("NULL Parameter", "XML Document"); return null XMLTag }
+
+    OleAutoObj olePI = null
+    checkOleSuccess ( oleMethod (objDoc, "createProcessingInstruction", oleArgs <- targetName <- contentValue, olePI) )
+    if (null olePI) { raiseError ("XML Error", "Could not create new PI with target " targetName " in XML document."); }
+
+    return create_XMLTag_ (xd, olePI)
+}
+
+/*! \memberof XMLDocument
+    \return A new XMLTag object, that contains the processing instruction node.
+    \param xd The XMLDocument to associate with the XML processing instruction object
+    \param targetName The processing instruction target
+    \brief Creates a special XML processing instruction (PI) node with empty cinstruction content.
+    \note This function creates only the XML node for the PI. The node name is set to the passed target name
+          for the instruction. The instruction itself must be added later.
+    \see Use appendChild() or insertChildBefore() to insert the returned processing instruction XMLTag
+         into the XML document. Use setAttribute() to specify the content of the processing instruction.
+*/
+XMLTag create_XMLProcessingInstruction(XMLDocument xd, string targetName) {
+    string contentValue = ""
+    return create_XMLProcessingInstruction(xd, targetName, contentValue)
+}
+
+/*! \memberof XMLDocument
+    \return A new XMLTag object, that contains the XML declaration node.
+    \param xd The XMLDocument to associate with the XML processing instruction object
+    \brief Creates the correct XML declaration node for MSXML
+    \note This function creates only the XML node for the declaration. The node name is "xml".
+          The node value is set to contain the XML version and the character encoding.
+    \see Use appendChild() or insertChildBefore() to insert the returned processing instruction XMLTag
+         into the XML document.
+*/
+XMLTag create_XMLDeclaration(XMLDocument xd) {
+    if (null xd) { raiseError ("NULL Parameter", "XML Document"); return null XMLTag}
+
+    string targetName = "xml"
+    string dataValue = "version=\"1.0\" encoding=\"UTF-8\""
+
+    // DOM API does not provide an own XML declaration method, but outlines to (mis-)use the
+    // processing instructions method instead
+    XMLTag xt = create_XMLProcessingInstruction(xd, targetName, dataValue)
+
+    return xt
+}
+
+/*! \memberof XMLDocument
+    \return A new XMLTag object, that contains the XML comment node.
+    \param xd The XMLDocument to associate with the XML comment object
+    \param dataValue (optional) The content of the processing instruction
+    \brief Creates an XML comment node for MSXML
+    \note This function creates only the XML node for the comment.
+    \see Use appendChild() or insertChildBefore() to insert the returned comment XMLTag
+         into the XML document.
+*/
+XMLTag create_XMLComment(XMLDocument xd, string dataValue) {
+    if (null xd) { raiseError ("NULL Parameter", "XML Document"); return null XMLTag}
+
+    OleAutoObj objDoc = getOleHandle_ xd
+    if (null objDoc) { raiseError ("NULL Parameter", "XML Document"); return null XMLTag }
+
+    OleAutoObj oleComment = null
+    checkOleSuccess ( oleMethod (objDoc, "createComment", oleArgs <- dataValue, oleComment) )
+    if (null oleComment) { raiseError ("XML Error", "Could not create new comment in XML document."); }
+
+    return create_XMLTag_ (xd, oleComment)
+}
+
+/*! \memberof XMLDocument
     \return error code; 0 - if the XML schema could be loaded and attached correctly.
     \param xmlns The namespace to associate with the XML schema.
     \param[in,out] pFileName File name of the XML schema file to load. Returns a
@@ -1056,35 +1140,124 @@ void   setValue (XMLTag xt, string s) { checkOLE ( olePut ( getOleHandle_ xt, "n
 */  
 string getValue (XMLTag xt          ) { string result = null; xmlCheckOLE ( oleGet ( getOleHandle_ xt, "nodeValue", result ) ); return result }
 
-/*! \memberof XMLTag 
-    \param xt The XMLTag object which name to get. 
-    \returns The name for the XMLTag xt. 
+/*! \memberof XMLTag
+    \param xt The XMLTag object which name to get.
+    \returns The name for the XMLTag xt.
     \brief This function will return the name for the XMLTag xt.
-*/  
-string getName     (XMLTag xt) { string s = null; xmlCheckOLE (oleGet (getOleHandle_ xt, "nodeName", s)); return s }
+*/
+string getName     (XMLTag xt) { string s = null; checkOleSuccess (oleGet (getOleHandle_ xt, "nodeName", s)); return s }
+
+/*! \memberof XMLTag
+    \param xt The XMLTag object which type to get.
+    \returns The type of the XMLTag xt.
+    \brief This function will return the type for the XMLTag xt.
+*/
+string getType     (XMLTag xt) { string s = null; checkOleSuccess (oleGet (getOleHandle_ xt, "nodeTypeString", s)); return s }
 
 
-/*! \memberof XMLTag 
+/*! \memberof XMLTag
     \param xt The XMLTag object which attribute to set
     \param sAttrName The name of the attribute to set
     \param sAttrValue The value of the attribute to set
     \brief This function set the attribute value for the XMLTag xt.
-*/  
+*/
 void setAttribute (XMLTag xt, string sAttrName, string sAttrValue) {
-    checkOLE ( oleMethod ( getOleHandle_ xt, "setAttribute", oleArgs <- sAttrName <- sAttrValue ) ) 
+    if (getType(xt) == "processinginstruction")
+    {
+        Regexp GET_VALUE = null
+        Buffer bPiNewContent = create
+        Buffer bPIcontent = create
+        int iValueStart = -1
+        int iValueEnd = -1
+        bPIcontent += getText(xt)
+        if (length(bPIcontent) > 0)
+        {
+            string sErrMsg = ""
+            Buffer bRegExp = create
+            bRegExp += sAttrName
+            bRegExp += "[ ]*=[ ]*\"([^\"]*)\""
+            noError()
+                GET_VALUE = regexp2(tempStringOf(bRegExp))
+            sErrMsg = lastError()
+            if (null sErrMsg && search(GET_VALUE, bPIcontent, 0))
+            {
+                iValueEnd = (start 1) - 1
+                iValueStart = (end 1 + 1)
+                combine(bPiNewContent, bPIcontent, 0, iValueEnd)
+            }
+            else
+            {
+                combine(bPiNewContent, bPIcontent, 0)
+                bPiNewContent += " "
+            }
+            delete bRegExp
+            if (null sErrMsg)
+            {
+                delete GET_VALUE
+            }
+        }
+        if (iValueEnd < 0)
+        {
+            bPiNewContent += sAttrName
+            bPiNewContent += "="
+            bPiNewContent += "\""
+        }
+        bPiNewContent += sAttrValue
+        if (iValueStart < 0)
+        {
+            bPiNewContent += "\""
+        }
+        else
+        {
+            combine(bPiNewContent, bPIcontent, iValueStart)
+        }
+        setText(xt, tempStringOf(bPiNewContent))
+        delete bPIcontent
+        delete bPiNewContent
+    }
+    else
+    {
+        checkOleSuccess ( oleMethod ( getOleHandle_ xt, "setAttribute", oleArgs <- sAttrName <- sAttrValue ) )
+    }
 }
 
-/*! \memberof XMLTag 
+/*! \memberof XMLTag
     \param xt The XMLTag object for which the attribute shall be read.
     \param sAttrName The name of the attribute that shall be read.
-    \returns The value of the attribute. If the attribute does not exist, this function will return a null string. 
+    \returns The value of the attribute. If the attribute does not exist, this function will return a null string.
     \brief This function will read the attribute value of an XMLTag
-*/  
+*/
 string getAttribute (XMLTag xt, string sAttrName) {
     string result = ""
-    string sOleResult =  oleMethod ( getOleHandle_ xt, "getAttribute", oleArgs <- sAttrName, result )
-     
-    if (!null sOleResult) result = null
+    if (getType(xt) == "processinginstruction")
+    {
+        Regexp GET_VALUE = null
+        string sErrMsg = ""
+        Buffer bRegExp = create
+        bRegExp += sAttrName
+        bRegExp += "[ ]*=[ ]*\"([^\"]*)\""
+        noError()
+            GET_VALUE = regexp2(tempStringOf(bRegExp))
+        sErrMsg = lastError()
+        Buffer bPIcontent = create
+        bPIcontent += getText(xt)
+        if (null sErrMsg && search(GET_VALUE, bPIcontent, 0))
+        {
+            result = bPIcontent[start 1:end 1]
+        }
+        delete bPIcontent
+        delete bRegExp
+        if (null sErrMsg)
+        {
+            delete GET_VALUE
+        }
+    }
+    else
+    {
+        string sOleResult =  oleMethod ( getOleHandle_ xt, "getAttribute", oleArgs <- sAttrName, result )
+
+        if (!null sOleResult) result = null
+    }
     return result
 }
 
