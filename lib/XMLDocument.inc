@@ -622,29 +622,44 @@ bool loadXML (XMLDocument xd, Buffer s)
     return result
 }
 
+int save_XMLDocument_ (XMLDocument xd, string pFileName) {
+    int iResult = 0
+    string res = oleMethod (getOleHandle_ xd, "Save", oleArgs <- pFileName)
+    if (!null res) {
+        raiseError( "XMLSAVERR for XML file " pFileName ":",
+                    "Saving XML document failed with following error:\n"         //-
+                    res )
+        iResult = XMLSAVERR
+    }
+    return iResult
+}
 
+/*! \memberof XMLDocument
+    \return (Empty) XML document; returns null if XMLDocument object could not be created
+    \brief Constructor for XMLDocument class
+    This function returns a new and empty XML Document.
+*/
+XMLDocument create_XMLDocument () {
+    OleAutoObj oleDoc = oleCreateAutoObject("Msxml2.DOMDocument.6.0")
 
-/*! \memberof XMLDocument 
-    \return true - if the XML document could be loaded and parsed correctly. 'false' if there was an error loading the document.
-    \brief Constructor for XMLDocument class. 
-    This function returns a new and empty XML Document, that only contains a root node. 
-*/  
-XMLDocument create_XMLDocument () { 
-    OleAutoObj oleDoc = oleCreateAutoObject("MSXML.DOMDocument")
-        
     if (null oleDoc) {
-        raiseError ("COM Error", "Microsoft XML DOMDocument seems not to be installed. Install Internet Explorer.") 
+        raiseError ("COM Error", "Microsoft XML DOMDocument seems not to be installed. Install Internet Explorer.")
         return null XMLDocument
     }
-        
-    DxlObject x = new(); 
-    XMLDocument result = (addr_ x) XMLDocument
-    
-    setOleHandle_ (result, oleDoc)     
-    Skip sk = create(); setTagCache_ (result, sk) 
 
-    loadXML (result, "")    
-    
+    // Parse complete XML document
+    checkOleSuccess ( olePut (oleDoc, "validateOnParse", true) )
+    checkOleSuccess ( oleMethod (oleDoc, "setProperty", oleArgs <- "MultipleErrorMessages" <- true ) )
+    checkOleSuccess ( oleMethod (oleDoc, "setProperty", oleArgs <- "ResolveExternals" <- true ) )
+
+    DxlObject x = new();
+    XMLDocument result = (addr_ x) XMLDocument
+
+    setOleHandle_ (result, oleDoc)
+    Skip sk = create(); setTagCache_ (result, sk)
+
+    loadXML (result, "")
+
     return result
 }
 
@@ -1195,3 +1210,81 @@ XMLTag firstChild (XMLTag xt) {
    if (null oleNode) { return null XMLTag } 
    return create_XMLTag_ (getParentDocument xt, oleNode)
 }
+
+/*! \memberof XMLDocument
+    \return error code; 0 - if the XML document passed validation
+    \param xd The XMLDocument into which the contents shall be loaded.
+    \param pXMLFile The XML file from which the XML document was loaded
+    \brief This function validates the XML content of an XMLDocument object.
+*/
+int validateXMLDocument (XMLDocument xd, string pXMLFile) {
+    int iRetVal = 0
+    bool result = false
+
+    Buffer bParseMsg = null
+    Buffer bError = null
+
+    if (!null pXMLFile)
+    {
+        if (save_XMLDocument_(xd, pXMLFile) == 0)
+        {
+            if (checkOleSuccess(  oleMethod (getOleHandle_ xd, "load", oleArgs <- pXMLFile, result)  ))
+            {
+                bParseMsg = getParseErrorMsg_ xd
+                if (!null bParseMsg)
+                {
+                    bError = create
+                    bError += "XMLVALERR for "
+                    bError += "<"
+                    bError += pXMLFile
+                    bError += ">:\n"
+                    bError += "Validation of XML file failed with following error(s):\n"
+                    /*
+                     * We have encountered errors during parsing of the XML file.
+                     * Reload and perform a full validation afterwards, if possible:
+                     */
+                    checkOleSuccess ( olePut (getOleHandle_ xd, "validateOnParse", false) )
+                    checkOleSuccess(  oleMethod (getOleHandle_ xd, "load", oleArgs <- pXMLFile)  )
+                }
+                else
+                {
+                    return iRetVal
+                }
+            }
+        }
+    }
+
+    bParseMsg = getValidationErrorMsg_(xd, bParseMsg)
+
+    if (null bError && length(bParseMsg) > 0)
+    {
+        bError = create
+        bError += "Validation of XML document failed with following error(s):\n"
+    }
+
+    if (!null bError)
+    {
+        combine(bError, bParseMsg, 0)
+        print tempStringOf bError
+        iRetVal = XMLVALERR
+    }
+
+    delete bParseMsg
+    delete bError
+
+    return iRetVal
+}
+
+/*! \memberof XMLDocument
+    \return error code; 0 - if the XML document passed validation
+    \param xd The XMLDocument into which the contents shall be loaded.
+    \brief This function validates the XML content of an XMLDocument object.
+*/
+int validateXMLDocument (XMLDocument xd) {
+    string pLocation = ""
+
+    checkOleSuccess (  oleGet (getOleHandle_ xd, "url", pLocation)   )
+
+    return validateXMLDocument (xd, pLocation)
+}
+
