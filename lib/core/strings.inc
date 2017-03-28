@@ -87,3 +87,121 @@ string replace (string sSource, string sSearch, string sReplace) {
     string result = stringOf gbuf_replace_result
     return result
 }
+
+/**
+ *  bool string_replace(Regexp pPattern, string pReplaceWith, int iStart, int iEnd, Buffer &p_buff)
+ *  @brief Replaces a given pattern within text buffer
+ *  @param[in] pPattern Regular expression with the pattern to search for
+ *  @param[in] pReplaceWith The replace string.
+ *  @param[in] iStart (optional) Position in the buffer, where to start the replacement (iStart >= 0)
+ *  @param[in] iEnd (optional)   Position in the buffer, where to end the replacement
+ *  @param[in,out] p_buff Text buffer
+ *  @return <b>bool</b> False, if the pattern has not been found in the buffer
+ *
+ *  @note This function handles iStart and iEnd in the same way as DOORS DXL function
+ *        search():
+ *        iStart < 0:              not allowed; no replacement
+ *        iEnd < 0:                ignore parameter iEnd
+ *        iEnd < iStart:           ignore parameter iEnd
+ *        iStart >= length buffer: no replacement
+ *
+ *  @par Example:
+ *  @code
+ *  Regexp regPattern = regexp2 "Test
+ *  Buffer b = create
+ *  b = "This is a Test string."
+ *  // ...
+ *  if (string_replace(regPattern, "new test", b)
+ *  {
+ *      print "Result: "
+ *      print tempStringOf(b)
+ *      print "\n"
+ *  }
+ *  // ...
+ *  delete regPattern
+ *  @endcode
+ *
+ *  Original string (original): This is a Test string.<br/>
+ *  Pattern (pattern): Test<br/>
+ *  Replace with (replaceWith): new Test<br/>
+ *  <br/>
+ *  Result: This is a new test string.
+ */
+bool string_replace(Regexp pPattern, string pReplaceWith, int iStart, int iEnd, Buffer &p_buff)
+{
+    bool doneReplace = false
+    Buffer tmp_buf = create()
+    int last_index = iStart
+    int current_index = 0
+    int offset = 0
+
+    // Functon search() is pretty tolerant regarding start/end values
+    // But as we repeatedly use it, we need to fix some strange settings,
+    // that search() usually accepts
+    if (last_index > iEnd)
+    {
+        // search() ignores iEnd if iEnd < iStart
+        iEnd = -1
+    }
+    if (last_index > 0)
+    {
+         combine(tmp_buf, p_buff, 0, last_index - 1)
+    }
+    while (search(pPattern, p_buff, last_index, iEnd)) {
+        offset = end 0 + 1
+        current_index = last_index + start 0 - 1
+        if (current_index >= last_index)
+        {
+            combine(tmp_buf, p_buff, last_index, current_index)
+        }
+        last_index = last_index + offset
+        tmp_buf += pReplaceWith
+        doneReplace = true
+        if (iEnd >= 0 && last_index > iEnd)
+        {
+            // We reached the end of the replace area, but can't rely
+            // on function search(), as it would now start to ignore iEnd
+            break;
+        }
+    }
+    if (last_index < 0)
+    {
+        combine(tmp_buf, p_buff, 0)
+    }
+    else
+    {
+        combine(tmp_buf, p_buff, last_index)
+    }
+    delete(p_buff)
+    p_buff = tmp_buf
+    return doneReplace
+}
+
+/**
+ *  @overload bool string_replace(Regexp pPattern, string pReplaceWith, int iStart, Buffer &p_buff)
+ *  @brief Replaces a given pattern within text buffer
+ *
+ *  @note If also an end postion for the replacement is required, use the function
+ *        overload above.
+ *
+ */
+bool string_replace(Regexp pPattern, string pReplaceWith, int iStart, Buffer &p_buff)
+{
+    int iEnd = -1 // search and replace from iStart to the end of the buffer
+    return string_replace(pPattern, pReplaceWith, iStart, iEnd, p_buff)
+}
+
+/**
+ *  @overload bool string_replace(Regexp pPattern, string pReplaceWith, Buffer &p_buff)
+ *  @brief Replaces a given pattern within a text buffer
+ *
+ *  @note If also a start and/or end postion for the replacement is required, use the function
+ *        overload above.
+ *
+ */
+bool string_replace(Regexp pPattern, string pReplaceWith, Buffer &p_buff)
+{
+    int iStart = 0  // Search and replace from the beginning of the buffer
+    int iEnd = -1   // until its end
+    return string_replace(pPattern, pReplaceWith, iStart, iEnd, p_buff)
+}
