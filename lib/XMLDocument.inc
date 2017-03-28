@@ -273,35 +273,356 @@ void removeCachedXMLTag_ (XMLDocument xd, XMLTag xt) { delete (getTagCache_ xd, 
 
 /*! \memberof XMLTag
     \param xd XMLTag object to be destroyed. Will be set to NULL by the function.
-    \brief This function will destroy the XMLTag in memory and release its OLE handle. 
-    
-    This function is called by delete_XMLDocument(XMLDocument &) which will delete all tags created in it. So 
-    you usually don't need to call it, except if you are handling huge documents and want to take care of memory. 
-*/  
-void delete_XMLTag (XMLTag &xd) {
-    removeCachedXMLTag_ (getParentDocument xd, xd)    
-    OleAutoObj oleObj = getOleHandle_ xd; oleCloseAutoObject oleObj    
-    DxlObject x = DxlObjectOf xd; delete x; 
-    xd = null;
+    \brief This function will destroy the XMLTag in memory and release its OLE handle.
+
+    This function is called by delete_XMLDocument(XMLDocument &) which will delete all tags created in it. So
+    you usually don't need to call it, except if you are handling huge documents and want to take care of memory.
+*/
+void delete_XMLTag (XMLTag &xt) {
+    removeCachedXMLTag_ (getParentDocument xt, xt)
+    OleAutoObj oleObj = getOleHandle_ xt; oleCloseAutoObject oleObj
+    DxlObject x = DxlObjectOf xt; delete x;
+    xt = null;
 }
 
 
-/*! \memberof XMLDocument 
-    \return true - if the XML document could be loaded and parsed correctly. 'false' if there was an error loading the document.
-    \param xd The XMLDocument into which the contents shall be loaded. 
-    \param s the contents of the XML document to load
-    \brief This function loads the XML content of a string into an XMLDocument object.     
-*/  
-bool loadXML (XMLDocument xd, string s) {
+/*! \memberof XMLDocument
+    \return Buffer with the formatted parsing error information. Null if parsing was successful.
+    \param xd The XMLDocument that has been loaded (and parsed).
+    \brief This function returns information about the first parsing error of an XML document object.
+*/
+Buffer getParseErrorMsg_ (XMLDocument xd) {
+    // retrieve XML parse error
+    OleAutoObj oleParseError
+    Buffer getParseErrorMsg = null
+    string sResult = ""
+    int iResult = 0
+
+    checkOleSuccess (  oleGet (getOleHandle_ xd, "parseError", oleParseError)  )
+    checkOleSuccess (  oleGet (oleParseError, "errorCode", iResult )  )
+    if (iResult != 0)
+    {
+        Regexp FIND_NS_URI = regexp2 "{[^}]+}"
+        getParseErrorMsg = create
+        getParseErrorMsg += "Error #1 in line: "
+        checkOleSuccess (  oleGet (oleParseError, "line", iResult )  )
+        getParseErrorMsg += iResult ""
+        getParseErrorMsg += ", position: "
+        checkOleSuccess (  oleGet (oleParseError, "linepos", iResult )  )
+        getParseErrorMsg += iResult ""
+        getParseErrorMsg += "\n"
+        checkOleSuccess (  oleGet (oleParseError, "reason", sResult )  )
+        getParseErrorMsg += sResult
+        getParseErrorMsg += "Source: "
+        checkOleSuccess (  oleGet (oleParseError, "srcText", sResult )  )
+        getParseErrorMsg += replace(trimWhitespace(sResult), "\t", " ")
+        getParseErrorMsg += "\n"
+
+        string_replace(FIND_NS_URI, "", getParseErrorMsg)
+        delete FIND_NS_URI
+    }
+
+    return getParseErrorMsg
+}
+
+/*! \memberof XMLDocument
+    \return Buffer with the formatted validation error information. Null if validation was successful.
+    \param[in] xd The XMLDocument that has been validated
+    \param[in,out] error_buffer Buffer where to store the validation errors
+    \brief This function returns information about the validation errors of an XML document object.
+    \details If the validation directly follows a failed parse of the XML document,
+             the parse error message should be passed as error_buffer. This function
+             evaluates the parse error and updates the buffer with the found validation
+             errors.
+*/
+Buffer getValidationErrorMsg_ (XMLDocument xd, Buffer &error_buffer) {
+    // retrieve XML parse error
+    const int XML_E_NODTD         = -1072897500
+    const int XML_E_NOTWF         = -1072897501
+    const int XML_INVALID_CONTENT = -1072898028
+
+    Buffer getValidationErrorMsg = error_buffer
+    if (null getValidationErrorMsg)
+    {
+        getValidationErrorMsg = create
+    }
+
+    OleAutoObj oleValidationError = null
+    OleAutoObj oleValidationErrorList = null
+    string sResult = ""
+    int iResult = 0
+    int iNumErrors = 0
+    int i = 0
+
+    if (checkOleSuccess (  oleMethod (getOleHandle_ xd, "validate", oleArgs(), oleValidationError)  ))
+    {
+        checkOleSuccess (  oleGet (oleValidationError, "errorCode", iResult )  )
+        if (iResult != 0)
+        {
+            if (iResult == XML_E_NOTWF)
+            {/*
+              * The validation was interrupted. This is usually the case if
+              * the xml file contains invalid characters.
+              * Only the first validation error that was found during parsing
+              * will be returned.
+              */
+              getValidationErrorMsg += "ERROR: Failed to completely parse and validate XML\n"
+            }
+            else
+            {
+                Regexp FIND_NS_URI = regexp2 "{[^}]+}"
+                Regexp FIND_LN_INFO = regexp2 "/\\*\\[local-name\\(\\)="
+                Regexp FIND_NS_INFO = regexp2 " and namespace-uri\\(\\)=\"[^\"]+\"\\]"
+                checkOleSuccess (  oleGet (oleValidationError, "allErrors", oleValidationErrorList )  )
+                if (!null oleValidationErrorList)
+                {
+                    checkOleSuccess (  oleGet (oleValidationErrorList, "length", iNumErrors )  )
+                }
+
+                if (iResult == XML_E_NODTD)
+                {   /*
+                    * This is a special case where parsing fails but
+                    * validation after loading succeeds. Error information
+                    * for the first error has now also to be taken from the validation.
+                    */
+                    setempty getValidationErrorMsg
+                    getValidationErrorMsg += "Error #"
+                    getValidationErrorMsg += ++i ""
+                    getValidationErrorMsg += " of "
+                    getValidationErrorMsg += iNumErrors ""
+                    getValidationErrorMsg += ":\n"
+                    checkOleSuccess (  oleGet (oleValidationError, "reason", sResult )  )
+                    getValidationErrorMsg += sResult
+                    getValidationErrorMsg += "Source: "
+                    checkOleSuccess (  oleGet (oleValidationError, "errorXPath", sResult )  )
+                    getValidationErrorMsg += sResult
+                    getValidationErrorMsg += "\n\n"
+                }
+
+                if (iNumErrors > 1)
+                {
+                    if (i == 0)
+                    {
+                        setempty getValidationErrorMsg
+                    }
+                    checkOleSuccess (  oleGet (oleValidationErrorList, "next", oleValidationError )  )
+                    while (!null oleValidationError)
+                    {
+                        getValidationErrorMsg += "Error #"
+                        getValidationErrorMsg += ++i ""
+                        getValidationErrorMsg += " of "
+                        getValidationErrorMsg += iNumErrors ""
+                        getValidationErrorMsg += ":\n"
+                        checkOleSuccess (  oleGet (oleValidationError, "reason", sResult )  )
+                        getValidationErrorMsg += sResult
+                        getValidationErrorMsg += "Source: "
+                        checkOleSuccess (  oleGet (oleValidationError, "errorXPath", sResult )  )
+                        getValidationErrorMsg += sResult
+                        getValidationErrorMsg += "\n\n"
+                        checkOleSuccess (  oleGet (oleValidationErrorList, "next", oleValidationError )  )
+                    }
+                }
+                string_replace(FIND_LN_INFO, " ", getValidationErrorMsg)
+                string_replace(FIND_NS_INFO, "", getValidationErrorMsg)
+                string_replace(FIND_NS_URI, "", getValidationErrorMsg)
+                delete FIND_NS_URI
+                delete FIND_LN_INFO
+                delete FIND_NS_INFO
+            }
+        }
+    }
+    else
+    {
+        getValidationErrorMsg += "ERROR: Cannot validate XML\n"
+    }
+
+    return getValidationErrorMsg
+}
+
+/*! \memberof XMLDocument
+    \return Buffer with the formatted validation error information. Null if validation was successful.
+    \param[in] xd The XMLDocument that has been validated
+    \brief This function returns information about the validation errors of an XML document object.
+*/
+Buffer getValidationErrorMsg_ (XMLDocument xd) {
+    Buffer getValidationErrorMsg = create
+
+    return getValidationErrorMsg_ (xd, getValidationErrorMsg)
+}
+
+/*! \memberof XMLDocument
+    \return error code; 0 - if the XML document could be loaded and parsed correctly.
+    \param xd The XMLDocument into which the contents shall be loaded.
+    \param pXMLFile The XML file to load. Can be a file system path or an URL
+    \brief This function loads the XML content of a file into an XMLDocument object.
+*/
+int loadXMLfile (XMLDocument xd, string pXMLFile) {
+    int iRetVal = 0
     bool result = false
-    checkOLE (  oleMethod (getOleHandle_ xd, "LoadXML", oleArgs <- s, result)  )
+    bool validLocation = false
+
+    if (fileSize( pXMLFile ) > 0)
+    {
+        validLocation = true
+    }
+    else if (checkURL( pXMLFile ))
+    {
+        /*
+         * We do not want to setup an onreadystatechange handler to check
+         * for complete download and parsing of the XML file
+         */
+        checkOleSuccess ( olePut (getOleHandle_ xd, "async", false) )
+        validLocation = true
+    }
+
+    if (validLocation)
+    {
+        if (checkOleSuccess(  oleMethod (getOleHandle_ xd, "load", oleArgs <- pXMLFile, result)  ))
+        {
+            Buffer bError = null
+            Buffer bParseMsg = getParseErrorMsg_ xd
+            if (!null bParseMsg)
+            {
+                bError = create
+                bError += "XMLPARSERR for "
+                bError += "<"
+                bError += pXMLFile
+                bError += ">:\n"
+                bError += "Parsing of XML file failed with following error(s):\n"
+
+                /*
+                 * We have encountered errors during parsing of the XML file.
+                 * Reload and perform a full validation afterwards, if possible:
+                 */
+                checkOleSuccess ( olePut (getOleHandle_ xd, "validateOnParse", false) )
+                if (checkOleSuccess(  oleMethod (getOleHandle_ xd, "load", oleArgs <- pXMLFile)  ))
+                {
+                    bParseMsg = getValidationErrorMsg_(xd, bParseMsg)
+                }
+
+                combine(bError, bParseMsg, 0)
+                print tempStringOf bError
+
+                iRetVal = XMLPARSERR
+            }
+            else
+            {
+                iRetVal = 0
+            }
+            delete bParseMsg
+            delete bError
+        }
+        else
+        {
+            raiseError( "XMLLOADERR for " pXMLFile ":", "Cannot load XML file"  )
+            iRetVal = XMLLOADERR
+        }
+    }
+    else
+    {
+        raiseError( "XMLNOFILEERR for " pXMLFile ":", "Cannot open XML file"  )
+        iRetVal = XMLNOFILEERR
+    }
+    return iRetVal
+}
+
+/*! \memberof XMLDocument
+    \return true - if the XML document could be loaded and parsed correctly. 'false' if there was an error loading the document.
+    \param xd The XMLDocument into which the contents shall be loaded.
+    \param pXMLFile the file name of the XML document to load
+    \brief This function loads the XML content of a file into an XMLDocument object.
+*/
+bool loadXMLfile (XMLDocument xd, string pXMLFile) {
+    bool result = true
+    int iRetVal = loadXMLfile (xd, pXMLFile)
+    if (iRetVal < 0) result = false
     return result
 }
 
-/*! \memberof XMLDocument 
-    \brief Same as loadXML(XMLDocumet, string) just takes a string as an argument
+/*! \memberof XMLDocument
+    \return true - if the XML document could be loaded and parsed correctly. 'false' if there was an error loading the document.
+    \param xd The XMLDocument into which the contents shall be loaded.
+    \param s the contents of the XML document to load
+    \brief This function loads the XML content of a string into an XMLDocument object.
 */
-bool loadXML (XMLDocument xd, Buffer s) { return loadXML (xd, tempStringOf s)  }
+bool loadXML (XMLDocument xd, string s)
+{
+    bool result = false
+
+    if (checkOleSuccess( oleMethod( getOleHandle_ xd, "loadXML", oleArgs <- s, result ) ))
+    {
+        if (!null s)
+        {
+            Buffer bErrMsg = null
+            bErrMsg = getParseErrorMsg_ xd
+            if (!null bErrMsg)
+            {
+
+                /*
+                 * We have encountered errors during parsing of the XML document.
+                 * Reload and perform a full validation afterwards, if possible:
+                 */
+                checkOleSuccess ( olePut (getOleHandle_ xd, "validateOnParse", false) )
+                if (checkOleSuccess(  oleMethod (getOleHandle_ xd, "loadXML", oleArgs <- s)  ))
+                {
+                    bErrMsg = getValidationErrorMsg_(xd, bErrMsg)
+                }
+
+                raiseError( "XMLPARSERR",
+                            "Parsing of XML document failed with following error(s):\n"         //-
+                            tempStringOf(bErrMsg) )
+            }
+            else
+            {
+                result = true
+            }
+            delete bErrMsg
+        }
+    }
+    return result
+}
+
+/*! \memberof XMLDocument
+    \brief Same as loadXML(XMLDocumet, string) just takes a buffer as an argument
+*/
+bool loadXML (XMLDocument xd, Buffer s)
+{
+    bool result = false
+
+    if (checkOleSuccess( oleMethod( getOleHandle_ xd, "loadXML", oleArgs <- s, result ) ))
+    {
+        if (length s > 0)
+        {
+            Buffer bErrMsg = null
+            bErrMsg = getParseErrorMsg_ xd
+            if (!null bErrMsg)
+            {
+
+                /*
+                 * We have encountered errors during parsing of the XML document.
+                 * Reload and perform a full validation afterwards, if possible:
+                 */
+                checkOleSuccess ( olePut (getOleHandle_ xd, "validateOnParse", false) )
+                if (checkOleSuccess(  oleMethod (getOleHandle_ xd, "loadXML", oleArgs <- s)  ))
+                {
+                    bErrMsg = getValidationErrorMsg_(xd, bErrMsg)
+                }
+
+                raiseError( "XMLPARSERR",
+                            "Parsing of XML document failed with following error(s):\n"         //-
+                            tempStringOf(bErrMsg) )
+            }
+            else
+            {
+                result = true
+            }
+            delete bErrMsg
+        }
+    }
+    return result
+}
+
+
 
 /*! \memberof XMLDocument 
     \return true - if the XML document could be loaded and parsed correctly. 'false' if there was an error loading the document.
