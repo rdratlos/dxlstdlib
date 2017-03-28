@@ -39,6 +39,7 @@ OleAutoArgs ::<-(OleAutoArgs x, int    a) { put(x, a); return x }
 OleAutoArgs ::<-(OleAutoArgs x, string a) { put(x, a); return x }
 OleAutoArgs ::<-(OleAutoArgs x, bool   a) { put(x, a); return x }
 OleAutoArgs ::<-(OleAutoArgs x, OleAutoObj a) { put(x, a); return x }
+OleAutoArgs ::<-(OleAutoArgs x, Buffer a) { put(x, tempStringOf(a)); return x }
 
 OleAutoArgs ::<-(OleAutoArgs x, Array ar) {    
     string argType = (string get(ar, 0,0)); 
