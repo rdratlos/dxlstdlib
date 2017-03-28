@@ -1212,6 +1212,81 @@ XMLTag firstChild (XMLTag xt) {
 }
 
 /*! \memberof XMLDocument
+    \param xdStylesheet The XMLDocument that contains the stylesheet for the transformation
+    \param xdTransform  The XMLDocument object for which the XML shall be returned.
+    \returns string with the transformed XML document
+    \brief This function will apply a stylesheet to an XML document and return the transformation result
+    \see create_XMLTransformStyleSheet_() for creation of a simple formatting style sheet
+*/
+string transformDocument (XMLDocument xdStylesheet, XMLDocument xdTransform) {
+    string result = ""
+    checkOleSuccess (  oleMethod (getOleHandle_ xdTransform, "transformNode", oleArgs <- getOleHandle_ xdStylesheet, result)  )
+    return result
+}
+
+/*! \memberof XMLDocument
+    \overload
+    \param[in] xdStylesheet The XMLDocument that contains the stylesheet for the transformation
+    \param[in,out] xd  XMLDocument object
+    \returns error code; 0, if the transformation was succesful;
+    \brief This function transforms a XML document using a XSL stylesheet
+    \note After calling this function the passed XML document object contains the transformed
+          XML document. If the transformation fails, the object contains the original passed
+          XML document.
+    \see create_XMLTransformStyleSheet_() for creation of a simple formatting style sheet
+*/
+int transformDocument (XMLDocument xdStylesheet, XMLDocument &xd) {
+    int iRetVal = 0
+    XMLDocument xdTransform = create_XMLDocument()
+    XMLDocument xdTemp = xd
+    if (!null xdTransform)
+    {
+        if (checkOleSuccess(oleMethod(getOleHandle_ xdTemp, "transformNodeToObject",
+                                      oleArgs <- (getOleHandle_ xdStylesheet) <- (getOleHandle_ xdTransform))))
+        {
+            Buffer bParseMsg = getParseErrorMsg_ xdTransform
+            if (!null bParseMsg)
+            {
+               iRetVal = XMLVALERR
+            }
+            delete bParseMsg
+        }
+        else
+        {
+            raiseError( "XMLXFORMERR",
+                        "Cannot transform XML document." )
+            iRetVal = XMLXFORMERR
+        }
+        if (iRetVal == 0)
+        {
+            xd = xdTransform
+            delete_XMLDocument(xdTemp)
+        }
+    }
+    return iRetVal
+}
+
+/*! \memberof XMLDocument
+    \overload
+    \param[in] xdStylesheet The XMLDocument that contains the stylesheet for the transformation
+    \param[in,out] xdTransform  XMLDocument object
+    \returns True, if the transformation was succesful; otherwise failed
+    \brief This function transforms a XML document using a XSL stylesheet
+    \note After calling this function the passed XML document object contains the transformed
+          XML document. If the transformation fails, the object contains the original passed
+          XML document.
+    \see create_XMLTransformStyleSheet_() for creation of a simple formatting style sheet
+*/
+bool transformDocument (XMLDocument xdStylesheet, XMLDocument &xd) {
+    XMLDocument xdTemp = xd
+    bool bRetVal = true
+    int iRetVal = transformDocument (xdStylesheet, xdTemp)
+    if (iRetVal < 0) bRetVal = false
+    xd = xdTemp
+    return bRetVal
+}
+
+/*! \memberof XMLDocument
     \return error code; 0 - if the XML document passed validation
     \param xd The XMLDocument into which the contents shall be loaded.
     \param pXMLFile The XML file from which the XML document was loaded
