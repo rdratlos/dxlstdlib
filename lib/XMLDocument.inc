@@ -218,6 +218,7 @@ void xmlCheckOLE( string s) {
 //! \brief XMLDocument is a class that encapsules an XML document.
 struct XMLDocument {};
 DxlObject DxlObjectOf (XMLDocument xd) { return (addr_ xd) DxlObject }
+XMLDocument XMLDocumentOf (DxlObject dx) { return (addr_ dx) XMLDocument }
 
 // OLE Handle Properties
 OleAutoObj getOleHandle_ (XMLDocument xd)                    { DxlObject x = DxlObjectOf xd; return (x->"oleHandle") OleAutoObj }
@@ -228,8 +229,8 @@ struct XMLTag {};
 DxlObject DxlObjectOf (XMLTag xd) { return (addr_ xd) DxlObject }
 
 // OLE Handle Properties
-OleAutoObj getOleHandle_ (XMLTag xd)                    { DxlObject x = DxlObjectOf xd; return (x->"oleHandle") OleAutoObj }
-void       setOleHandle_ (XMLTag xd, OleAutoObj oleObj) { DxlObject x = DxlObjectOf xd;         x->"oleHandle" = oleObj    }
+OleAutoObj getOleHandle_ (XMLTag xt)                    { DxlObject x = DxlObjectOf xt; return (x->"oleHandle") OleAutoObj }
+void       setOleHandle_ (XMLTag xt, OleAutoObj oleObj) { DxlObject x = DxlObjectOf xt;         x->"oleHandle" = oleObj    }
 
 //! \brief XMLSchemaCache is a class that encapsules an XML schema cache.
 struct XMLSchemaCache {};
@@ -818,6 +819,18 @@ XMLTag nextNode (XMLNodelist nl)    {
 
 
 /*! \memberof XMLDocument
+    \param xd The XMLDocument
+    \returns An XMLTag for the root element of the XML document; null if the XML document is empty
+    \brief This function returns the root element object of an XMLDocument
+*/
+XMLTag documentElement (XMLDocument xd) {
+   OleAutoObj oleNode = null
+   checkOleSuccess (  oleGet (getOleHandle_ xd, "documentElement", oleNode)   )
+   if (null oleNode) { return null XMLTag }
+   return create_XMLTag_ (xd, oleNode)
+}
+
+/*! \memberof XMLDocument
     \param xd The XMLDocument in which the query shall be executed
     \param expression The XPath expression query to execute on xd
     \returns An XMLTag for the first match of the XPATH query. 
@@ -834,19 +847,21 @@ XMLTag selectSingleNode (XMLDocument xd, string expression) {
     \param xt an XMLTag
     \returns The child nodes of the XMLTag xt as a nodelist.
     \brief This function returns all child objects of an XMLTag in a XMLNodelist.
-*/  
+    \details The function returns also processing instructions, comments, and text nodes,
+             that are child objects of the XMLTag
+*/
 XMLNodelist childNodes (XMLTag xt) {
-    DxlObject x = new; XMLNodelist result = (addr_ x) XMLNodelist; 
-    
+    DxlObject x = new; XMLNodelist result = (addr_ x) XMLNodelist;
+
     OleAutoObj oleNodeList = null
-    checkOLE (  oleGet (getOleHandle_ xt, "childNodes", oleNodeList)   ) 
-    if (null oleNodeList) { raiseError ("DOM ERROR", "selectNodes returned no result."); return null XMLNodelist }
-    
-    setOleHandle_ (result, oleNodeList) 
-    setParentDocument_ (result, getParentDocument xt) 
-    setCurrentNode_    (result, null XMLTag) 
+    checkOleSuccess (  oleGet (getOleHandle_ xt, "childNodes", oleNodeList)   )
+    if (null oleNodeList) { raiseError ("DOM ERROR", "childNodes returned no result."); return null XMLNodelist }
+
+    setOleHandle_ (result, oleNodeList)
+    setParentDocument_ (result, getParentDocument xt)
+    setCurrentNode_    (result, null XMLTag)
     return result
-}   
+}
 
 /*! \memberof XMLTag
     \param xt an XMLTag
