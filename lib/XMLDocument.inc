@@ -1044,14 +1044,29 @@ void appendChildNode_ (DxlObject dxlParent, XMLTag xtChild) {
     oleCloseAutoObject oleDomElement
 }
 
-/*! \memberof XMLDocument 
+/*! \memberof XMLDocument
     \param xd The XMLDocument to associate with the newly created XMLTag
     \param xtChild The XMLTag object to append to the root of the document
-    \brief This function will append a XMLTag that has been created by create_XMLTag(XMLDocument, string) to the document root of xd. 
-    
+    \brief This function will append a XMLTag that has been created by create_XMLTag(XMLDocument, string) to the document root of xd.
+    \note If the XML document is empty (no root element), the appended child tag will be handled as root tag.
+
     You need to call \b appendChild or \b insertChildBefore to make the new XMLTag show up in the document.
-*/  
-void appendChild (XMLDocument xd, XMLTag xtChild) { appendChildNode_ (DxlObjectOf xd, xtChild) } 
+*/
+void appendChild (XMLDocument xd, XMLTag xtChild) {
+    OleAutoObj oleRoot = null
+    XMLTag xtRoot = null
+    checkOleSuccess (  oleGet (getOleHandle_ xd, "documentElement", oleRoot)  )
+    if (!null oleRoot) {
+        xtRoot = create_XMLTag_ (xd, oleRoot)
+    }
+    if (!null xtRoot) {
+        appendChildNode_ (DxlObjectOf xtRoot, xtChild)
+        delete_XMLTag xtRoot
+    }
+    else {
+        appendChildNode_ (DxlObjectOf xd, xtChild)
+    }
+}
 
 /*! \memberof XMLTag 
     \param xt The new parent of xtChild.
@@ -1402,19 +1417,38 @@ void       setCurrentNode_ (XMLNodelist nl, XMLTag xt) { DxlObject x = DxlObject
 /*! \memberof XMLDocument
     \param xd The XMLDocument in which the query shall be executed
     \param expression The XPath expression query to execute on xd
-    \returns An XMLNodelist object containing the nodes matching the XPATH query. 
+    \returns An XMLNodelist object containing the nodes matching the XPATH query.
     \brief This function will execute an XPATH query on the XMLDocument object and return the XMLTags found in a XMLNodelist.
-*/  
+*/
 XMLNodelist selectNodes (XMLDocument xd, string expression) {
-    DxlObject x = new; XMLNodelist result = (addr_ x) XMLNodelist; 
-    
+    DxlObject x = new; XMLNodelist result = (addr_ x) XMLNodelist;
+
     OleAutoObj oleNodeList = null
-    checkOLE (  oleMethod (getOleHandle_ xd, "selectNodes", oleArgs <- expression, oleNodeList)   ) 
+    checkOleSuccess (  oleMethod (getOleHandle_ xd, "selectNodes", oleArgs <- expression, oleNodeList)   )
     if (null oleNodeList) { raiseError ("DOM ERROR", "selectNodes returned no result."); return null XMLNodelist }
-    
-    setOleHandle_ (result, oleNodeList) 
-    setParentDocument_ (result, xd) 
-    setCurrentNode_    (result, null XMLTag) 
+
+    setOleHandle_ (result, oleNodeList)
+    setParentDocument_ (result, xd)
+    setCurrentNode_    (result, null XMLTag)
+    return result
+}
+
+/*! \memberof XMLNodelist
+    \param xt The XMLTag on which the query shall be executed
+    \param expression The XPath expression query to execute on xt
+    \returns An XMLNodelist object containing the nodes matching the XPATH query.
+    \brief This function will execute an XPATH query on the XMLTag object and return the XMLTags found in a XMLNodelist.
+*/
+XMLNodelist selectNodes (XMLTag xt, string expression) {
+    DxlObject x = new; XMLNodelist result = (addr_ x) XMLNodelist;
+
+    OleAutoObj oleNodeList = null
+    checkOleSuccess (  oleMethod (getOleHandle_ xt, "selectNodes", oleArgs <- expression, oleNodeList)   )
+    if (null oleNodeList) { raiseError ("DOM ERROR", "selectNodes returned no result."); return null XMLNodelist }
+
+    setOleHandle_ (result, oleNodeList)
+    setParentDocument_ (result, getParentDocument(xt))
+    setCurrentNode_    (result, null XMLTag)
     return result
 }
 
@@ -1443,8 +1477,11 @@ void delete_NodeList (XMLNodelist &nl) {
 */  
 int count (XMLNodelist nl) {
         int count = -1
-        checkOLE (  oleGet (getOleHandle_ nl, "length", count )  )
-        return count 
+        if (!null nl)
+        {
+            checkOleSuccess (  oleGet (getOleHandle_ nl, "length", count )  )
+        }
+        return count
 }
 
 /*! \memberof XMLNodelist
@@ -1470,9 +1507,9 @@ void resetIterator (XMLNodelist nl) { checkOLE ( oleMethod (getOleHandle_ nl, "r
 /*! \memberof XMLNodelist
     \param nl The XMLNodelist for the current node shall be reset    
     \returns The node after the current node
-    \brief This function will return the next node in the list and \b delete the old current node object. 
-    
-    This function is indended for cycling through the XMLNodelist, without the need to cleanup the XMLTags 
+    \brief This function will return the next node in the list and \b delete the old current node object.
+
+    This function is intended for cycling through the XMLNodelist, without the need to cleanup the XMLTags
     afterwards.
 */  
 XMLTag nextNode (XMLNodelist nl)    { 
@@ -1533,14 +1570,38 @@ XMLNodelist childNodes (XMLTag xt) {
 
 /*! \memberof XMLTag
     \param xt an XMLTag
-    \returns An XMLTag of the first child of the XMLTag xt 
-    \brief This function returns all child objects of an XMLTag in a XMLNodelist.
-*/  
+    \returns The child elements of the XMLTag xt as a nodelist.
+    \brief This function returns all element childs objects of an XMLTag in a XMLNodelist.
+*/
+XMLNodelist childElementNodes (XMLTag xt) {
+    string sXPath = "child::*"
+    return selectNodes(xt, sXPath)
+}
+
+/*! \memberof XMLTag
+    \param xt an XMLTag
+    \returns The XMLTag of the first child of a XMLTag xt
+    \brief Return the first child of a XML element
+*/
 XMLTag firstChild (XMLTag xt) {
    OleAutoObj oleNode = null
    checkOLE (  oleGet (getOleHandle_ xt, "firstChild", oleNode)  ) 
    if (null oleNode) { return null XMLTag } 
    return create_XMLTag_ (getParentDocument xt, oleNode)
+}
+
+
+XMLNodelist attributes (XMLTag xt) {
+    DxlObject x = new; XMLNodelist result = (addr_ x) XMLNodelist;
+
+    OleAutoObj oleNodeList = null
+    checkOleSuccess (  oleGet (getOleHandle_ xt, "attributes", oleNodeList)   )
+    if (null oleNodeList) { raiseError ("DOM ERROR", "selectNodes returned no result."); return null XMLNodelist }
+
+    setOleHandle_ (result, oleNodeList)
+    setParentDocument_ (result, getParentDocument xt)
+    setCurrentNode_    (result, null XMLTag)
+    return result
 }
 
 /*! \memberof XMLDocument
